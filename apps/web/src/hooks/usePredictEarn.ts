@@ -65,20 +65,21 @@ export function usePredictEarn() {
       : selectedOutcome === "draw" ? "Draw"
       : `${selectedMatch.away} Win`;
 
-    const newBet: Bet = {
-      id: Date.now().toString(),
-      matchId: selectedMatch.id,
-      match: `${selectedMatch.home} vs ${selectedMatch.away}`,
-      selection: `${outcomeLabel} @ ${selectedOdd}`,
-      outcome: selectedOutcome,
-      stake: stakeNum,
-      collateral,
-      leverage,
-      odd: selectedOdd,
-      maxPayout,
-      status: "pending",
-      placedAt: new Date(),
-    };
+      const newBet: Bet = {
+        id: Date.now().toString(),
+        matchId: selectedMatch.id,
+        match: `${selectedMatch.home} vs ${selectedMatch.away}`,
+        selection: `${outcomeLabel} @ ${selectedOdd}`,
+        outcome: selectedOutcome,
+        stake: stakeNum,
+        collateral,
+        leverage,
+        odd: selectedOdd,
+        maxPayout,
+        status: "pending",
+        placedAt: new Date(),
+        matchTime: selectedMatch.commenceTime,  // ← add this line
+      };
 
     setBets((prev) => [newBet, ...prev]);
     setBalance((prev) => parseFloat((prev - collateral).toFixed(2)));
