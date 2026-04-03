@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 
-import { Navbar } from '@/components/navbar';
 import { WalletProvider } from "@/components/wallet-provider"
 
 const inter = Inter({ subsets: ['latin'] });
@@ -23,7 +22,6 @@ export default function RootLayout({
         {/* Navbar is included on all pages */}
         <div className="relative flex min-h-screen flex-col">
           <WalletProvider>
-            <Navbar />
             <main className="flex-1">
               {children}
             </main>

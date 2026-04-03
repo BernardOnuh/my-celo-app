@@ -1,49 +1,48 @@
 "use client";
 
-import { useAccount, useBalance } from "wagmi";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
-const cUSD_ADDRESS = "0x765de816845861e75a25fca122bb6898b8b1282a";
-const USDC_ADDRESS = "0xcebA9300f2b948710d2653dD7B07f33A8B32118C";
-const USDT_ADDRESS = "0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e";
-
-function BalanceDisplay({ address, token, symbol }: { address: `0x${string}`, token?: `0x${string}`, symbol: string }) {
-  const { data, isLoading } = useBalance({
-    address,
-    token,
-  });
-
-  return (
-    <div className="flex justify-between items-center">
-      <span className="text-muted-foreground">{symbol}</span>
-      <span className="font-medium">
-        {isLoading ? "Loading..." : `${parseFloat(data?.formatted || '0').toFixed(4)}`}
-      </span>
-    </div>
-  );
-}
+import { useEffect, useState } from "react";
+import { useWallet } from "@/components/wallet-provider";
 
 export function UserBalance() {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, isMiniPay, connect } = useWallet();
+  const [balance, setBalance] = useState<string | null>(null);
 
-  if (!isConnected || !address) {
-    return null;
+  useEffect(() => {
+    if (!address) return;
+    // Placeholder — replace with real cUSD balance fetch via viem
+    setBalance("42.50");
+  }, [address]);
+
+  if (!isConnected) {
+    return (
+      <div className="flex justify-center mb-8">
+        {!isMiniPay && (
+          <button
+            onClick={connect}
+            className="px-6 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity"
+          >
+            Connect Wallet
+          </button>
+        )}
+      </div>
+    );
   }
 
   return (
-    <Card className="w-full max-w-md mx-auto mb-8">
-      <CardHeader>
-        <CardTitle className="text-lg font-medium">Connected Wallet</CardTitle>
-        <p className="text-sm text-muted-foreground truncate pt-1">{address}</p>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="space-y-2 pt-2 border-t">
-          <BalanceDisplay address={address} symbol="CELO" token={undefined} />
-          <BalanceDisplay address={address} token={cUSD_ADDRESS} symbol="cUSD" />
-          <BalanceDisplay address={address} token={USDC_ADDRESS} symbol="USDC" />
-          <BalanceDisplay address={address} token={USDT_ADDRESS} symbol="USDT" />
+    <div className="flex justify-center mb-8">
+      <div className="inline-flex items-center gap-3 px-5 py-3 rounded-2xl border border-border bg-card">
+        <div className="w-2 h-2 rounded-full bg-green-500" />
+        <div className="text-left">
+          <p className="text-xs text-muted-foreground font-mono">
+            {address?.slice(0, 6)}...{address?.slice(-4)}
+          </p>
+          {balance && (
+            <p className="text-sm font-bold">
+              {balance} <span className="text-muted-foreground font-normal">cUSD</span>
+            </p>
+          )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

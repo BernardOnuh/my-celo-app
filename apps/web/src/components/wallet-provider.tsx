@@ -1,67 +1,73 @@
 "use client";
 
-import { RainbowKitProvider, connectorsForWallets } from "@rainbow-me/rainbowkit";
-import "@rainbow-me/rainbowkit/styles.css";
-import { injectedWallet } from "@rainbow-me/rainbowkit/wallets";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
-import { WagmiProvider, createConfig, http, useConnect } from "wagmi";
-import { celo, celoSepolia } from "wagmi/chains";
-import { ConnectButton } from "./connect-button";
+import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 
-const connectors = connectorsForWallets(
-  [
-    {
-      groupName: "Recommended",
-      wallets: [injectedWallet],
-    },
-  ],
-  {
-    appName: "my-celo-app",
-    projectId: process.env.NEXT_PUBLIC_WC_PROJECT_ID!,
-  }
-);
-
-const wagmiConfig = createConfig({
-  chains: [celo, celoSepolia],
-  connectors,
-  transports: {
-    [celo.id]: http(),
-    [celoSepolia.id]: http(),
-  },
-  ssr: true,
-});
-
-const queryClient = new QueryClient();
-
-function WalletProviderInner({ children }: { children: React.ReactNode }) {
-  const { connect, connectors } = useConnect();
-
-  useEffect(() => {
-    // Check if the app is running inside MiniPay
-    if (window.ethereum && window.ethereum.isMiniPay) {
-      // Find the injected connector, which is what MiniPay uses
-      const injectedConnector = connectors.find((c) => c.id === "injected");
-      if (injectedConnector) {
-        connect({ connector: injectedConnector });
-      }
-    }
-  }, [connect, connectors]);
-
-  return <>{children}</>;
+interface WalletContextType {
+  address: string | null;
+  isConnected: boolean;
+  isMiniPay: boolean;
+  connect: () => Promise<void>;
 }
 
-export function WalletProvider({ children }: { children: React.ReactNode }) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+const WalletContext = createContext<WalletContextType>({
+  address: null,
+  isConnected: false,
+  isMiniPay: false,
+  connect: async () => {},
+});
+
+export function useWallet() {
+  return useContext(WalletContext);
+}
+
+export function WalletProvider({ children }: { children: ReactNode }) {
+  const [address, setAddress] = useState<string | null>(null);
+  const [isMiniPay, setIsMiniPay] = useState(false);
+
+  const connect = async () => {
+    try {
+      const ethereum = (window as any).ethereum;
+      if (!ethereum) return;
+      const accounts: string[] = await ethereum.request({
+        method: "eth_requestAccounts",
+      });
+      if (accounts[0]) setAddress(accounts[0]);
+    } catch (err) {
+      console.error("Wallet connect error:", err);
+    }
+  };
+
+  useEffect(() => {
+    const ethereum = (window as any).ethereum;
+    if (!ethereum) return;
+
+    // Auto-connect if MiniPay
+    if (ethereum.isMiniPay) {
+      setIsMiniPay(true);
+      connect();
+    }
+
+    // Listen for account changes
+    ethereum.on("accountsChanged", (accounts: string[]) => {
+      setAddress(accounts[0] ?? null);
+    });
+  }, []);
+
+  // Update navbar wallet display
+  useEffect(() => {
+    const el = document.getElementById("wallet-display");
+    if (el) {
+      el.textContent = address
+        ? address.slice(0, 6) + "..." + address.slice(-4)
+        : "Not connected";
+    }
+  }, [address]);
 
   return (
-    <WagmiProvider config={wagmiConfig}>
-      <QueryClientProvider client={queryClient}>
-        <RainbowKitProvider>
-          <WalletProviderInner>{children}</WalletProviderInner>
-        </RainbowKitProvider>
-      </QueryClientProvider>
-    </WagmiProvider>
+    <WalletContext.Provider
+      value={{ address, isConnected: !!address, isMiniPay, connect }}
+    >
+      {children}
+    </WalletContext.Provider>
   );
 }
