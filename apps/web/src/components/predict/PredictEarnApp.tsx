@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTheme } from "next-themes";
 import { Tab } from "@/types/predict";
 import { usePredictEarn } from "@/hooks/usePredictEarn";
 import { MatchCard } from "@/components/predict/MatchCard";
@@ -11,6 +12,7 @@ import { Leaderboard } from "@/components/predict/Leaderboard";
 export function PredictEarnApp() {
   const [tab, setTab] = useState<Tab>("predict");
   const [sheetOpen, setSheetOpen] = useState(false);
+  const { theme, setTheme } = useTheme();
 
   const {
     matches, bets, mode, leverage, balance,
@@ -21,7 +23,6 @@ export function PredictEarnApp() {
     loadMock, loadLive, selectOutcome, changeMode, placeBet,
   } = usePredictEarn();
 
-  // Open sheet when outcome is selected
   const handleSelectOutcome = (
     match: Parameters<typeof selectOutcome>[0],
     outcome: Parameters<typeof selectOutcome>[1],
@@ -52,11 +53,21 @@ export function PredictEarnApp() {
             <span className="text-sm font-normal text-muted-foreground">cUSD</span>
           </p>
         </div>
-        <div className="text-right">
-          <p className="text-[11px] tracking-widest text-muted-foreground uppercase mb-1">
-            Live Pool
-          </p>
-          <p className="text-lg font-bold text-primary">${totalPool.toFixed(2)}</p>
+        <div className="flex items-center gap-3">
+          {/* Theme toggle */}
+          <button
+            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            className="w-8 h-8 rounded-full border border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors text-sm"
+            aria-label="Toggle theme"
+          >
+            {theme === "dark" ? "☀️" : "🌙"}
+          </button>
+          <div className="text-right">
+            <p className="text-[11px] tracking-widest text-muted-foreground uppercase mb-1">
+              Live Pool
+            </p>
+            <p className="text-lg font-bold text-primary">${totalPool.toFixed(2)}</p>
+          </div>
         </div>
       </div>
 
