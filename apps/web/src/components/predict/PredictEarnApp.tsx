@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTheme } from "next-themes";
 import { Tab } from "@/types/predict";
 import { usePredictEarn } from "@/hooks/usePredictEarn";
@@ -12,7 +12,10 @@ import { Leaderboard } from "@/components/predict/Leaderboard";
 export function PredictEarnApp() {
   const [tab, setTab] = useState<Tab>("predict");
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const { theme, setTheme } = useTheme();
+
+  useEffect(() => setMounted(true), []);
 
   const {
     matches, bets, mode, leverage, balance,
@@ -60,7 +63,7 @@ export function PredictEarnApp() {
             className="w-8 h-8 rounded-full border border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors text-sm"
             aria-label="Toggle theme"
           >
-            {theme === "dark" ? "☀️" : "🌙"}
+            {mounted ? (theme === "dark" ? "☀️" : "🌙") : null}
           </button>
           <div className="text-right">
             <p className="text-[11px] tracking-widest text-muted-foreground uppercase mb-1">
