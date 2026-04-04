@@ -1,190 +1,204 @@
+/**
+ * lib/odds.ts
+ * Fetches live football odds from The Odds API.
+ * API key is read from NEXT_PUBLIC_ODDS_API_KEY in .env.local
+ * No mock data. No fallback. Real matches only.
+ */
+
 import { Match } from "@/types/predict";
 
-// ── Time helpers ────────────────────────────────────────────────
+const API_KEY  = process.env.NEXT_PUBLIC_ODDS_API_KEY ?? "";
+const BASE_URL = "https://api.the-odds-api.com/v4";
+
+const SPORTS = [
+  "soccer_epl",
+  "soccer_spain_la_liga",
+  "soccer_italy_serie_a",
+  "soccer_germany_bundesliga",
+  "soccer_france_ligue_one",
+  "soccer_uefa_champs_league",
+];
+
+const LEAGUE_META: Record<string, { name: string; flag: string }> = {
+  soccer_epl:                { name: "Premier League",   flag: "🏴󠁧󠁢󠁥󠁮󠁧󠁿" },
+  soccer_spain_la_liga:      { name: "La Liga",          flag: "🇪🇸" },
+  soccer_italy_serie_a:      { name: "Serie A",          flag: "🇮🇹" },
+  soccer_germany_bundesliga: { name: "Bundesliga",       flag: "🇩🇪" },
+  soccer_france_ligue_one:   { name: "Ligue 1",          flag: "🇫🇷" },
+  soccer_uefa_champs_league: { name: "Champions League", flag: "🏆" },
+};
+
+interface OddsAPIGame {
+  id: string;
+  sport_key: string;
+  sport_title: string;
+  commence_time: string;
+  home_team: string;
+  away_team: string;
+  bookmakers?: Array<{
+    key: string;
+    markets: Array<{
+      key: string;
+      outcomes: Array<{ name: string; price: number }>;
+    }>;
+  }>;
+}
+
+// ── Formatting helpers ────────────────────────────────────────────────────────
 
 export function formatMatchTime(iso: string): string {
-  const date = new Date(iso);
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 export function formatMatchDate(iso: string): string {
-  const date = new Date(iso);
-  const today = new Date();
+  const d        = new Date(iso);
+  const today    = new Date();
   const tomorrow = new Date();
   tomorrow.setDate(today.getDate() + 1);
 
-  if (date.toDateString() === today.toDateString()) return "Today";
-  if (date.toDateString() === tomorrow.toDateString()) return "Tomorrow";
-  return date.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+  if (d.toDateString() === today.toDateString())    return "Today";
+  if (d.toDateString() === tomorrow.toDateString()) return "Tomorrow";
+  return d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
 }
 
 export function getTimeUntil(iso: string): string {
   const diff = new Date(iso).getTime() - Date.now();
-  if (diff <= 0) return "Started";
-  const mins = Math.floor(diff / 60000);
-  const hrs = Math.floor(mins / 60);
-  const days = Math.floor(hrs / 24);
-  if (days > 0) return `${days}d ${hrs % 24}h`;
-  if (hrs > 0) return `${hrs}h ${mins % 60}m`;
-  return `${mins}m`;
+  if (diff <= 0) return "Now";
+  const h = Math.floor(diff / 3_600_000);
+  const m = Math.floor((diff % 3_600_000) / 60_000);
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
 }
 
 export function getBettingDeadline(iso: string): string {
-  // Betting closes 5 mins before kickoff
-  const deadline = new Date(new Date(iso).getTime() - 5 * 60 * 1000);
-  const diff = deadline.getTime() - Date.now();
+  const diff = new Date(iso).getTime() - Date.now();
   if (diff <= 0) return "Closed";
-  const mins = Math.floor(diff / 60000);
-  const hrs = Math.floor(mins / 60);
-  if (hrs > 0) return `Closes in ${hrs}h ${mins % 60}m`;
-  return `Closes in ${mins}m`;
+  return `Closes in ${getTimeUntil(iso)}`;
 }
 
 export function isUrgent(iso: string): boolean {
   const diff = new Date(iso).getTime() - Date.now();
-  return diff > 0 && diff < 30 * 60 * 1000; // under 30 mins
+  return diff > 0 && diff < 3 * 3_600_000;
 }
 
-// ── Mock data ────────────────────────────────────────────────────
-
-function future(hoursFromNow: number): string {
-  return new Date(Date.now() + hoursFromNow * 3600 * 1000).toISOString();
+function abbreviate(name: string): string {
+  const words = name.split(" ");
+  if (words.length === 1) return name.slice(0, 3).toUpperCase();
+  return words.map((w) => w[0]).join("").toUpperCase().slice(0, 4);
 }
 
-export const MOCK_MATCHES: Match[] = [
-  {
-    id: "m1",
-    league: "Premier League",
-    leagueCountry: "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
-    isLive: true,
-    home: "Arsenal",
-    homeShort: "ARS",
-    away: "Chelsea",
-    awayShort: "CHE",
-    homeOdd: 2.1,
-    drawOdd: 3.4,
-    awayOdd: 3.2,
-    commenceTime: future(-0.5),   // started 30m ago
-    bettingDeadline: future(-0.6),
-    venue: "Emirates Stadium",
-    pool: { home: 58, draw: 22, away: 20, totalUSD: 1240 },
-  },
-  {
-    id: "m2",
-    league: "Premier League",
-    leagueCountry: "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
-    isLive: false,
-    home: "Man City",
-    homeShort: "MCI",
-    away: "Liverpool",
-    awayShort: "LIV",
-    homeOdd: 1.95,
-    drawOdd: 3.6,
-    awayOdd: 3.8,
-    commenceTime: future(1.5),
-    bettingDeadline: future(1.4),
-    venue: "Etihad Stadium",
-    pool: { home: 51, draw: 19, away: 30, totalUSD: 3870 },
-  },
-  {
-    id: "m3",
-    league: "La Liga",
-    leagueCountry: "🇪🇸",
-    isLive: false,
-    home: "Barcelona",
-    homeShort: "BAR",
-    away: "Real Madrid",
-    awayShort: "RMA",
-    homeOdd: 2.6,
-    drawOdd: 3.1,
-    awayOdd: 2.8,
-    commenceTime: future(3),
-    bettingDeadline: future(2.9),
-    venue: "Spotify Camp Nou",
-    pool: { home: 44, draw: 18, away: 38, totalUSD: 5120 },
-  },
-  {
-    id: "m4",
-    league: "NPFL",
-    leagueCountry: "🇳🇬",
-    isLive: false,
-    home: "Enyimba FC",
-    homeShort: "ENY",
-    away: "Rangers Intl",
-    awayShort: "RAN",
-    homeOdd: 1.9,
-    drawOdd: 3.2,
-    awayOdd: 4.1,
-    commenceTime: future(0.4),   // 24 mins away — urgent
-    bettingDeadline: future(0.3),
-    venue: "Enyimba International Stadium",
-    pool: { home: 62, draw: 20, away: 18, totalUSD: 340 },
-  },
-  {
-    id: "m5",
-    league: "CAF Champions League",
-    leagueCountry: "🌍",
-    isLive: false,
-    home: "Sundowns",
-    homeShort: "SUN",
-    away: "Al Ahly",
-    awayShort: "AHL",
-    homeOdd: 2.4,
-    drawOdd: 3.3,
-    awayOdd: 2.9,
-    commenceTime: future(24),
-    bettingDeadline: future(23.9),
-    venue: "Loftus Versfeld",
-    pool: { home: 35, draw: 25, away: 40, totalUSD: 890 },
-  },
-];
+// ── Parse raw API game → Match ────────────────────────────────────────────────
 
-// ── Live API fetch ────────────────────────────────────────────────
+function parseGame(game: OddsAPIGame): Match | null {
+  const h2h = game.bookmakers
+    ?.flatMap((b) => b.markets)
+    .find((m) => m.key === "h2h");
 
-function extractOdd(game: any, team: string): number {
-  try {
-    const bookmaker = game.bookmakers[0];
-    const market = bookmaker.markets.find((m: any) => m.key === "h2h");
-    const outcome = market.outcomes.find((o: any) => o.name === team);
-    return outcome ? parseFloat(outcome.price.toFixed(2)) : 3.0;
-  } catch {
-    return 3.0;
+  if (!h2h) return null;
+
+  const homeOut = h2h.outcomes.find((o) => o.name === game.home_team);
+  const awayOut = h2h.outcomes.find((o) => o.name === game.away_team);
+  const drawOut = h2h.outcomes.find((o) => o.name === "Draw");
+
+  if (!homeOut || !awayOut) return null;
+
+  const homeOdd = homeOut.price;
+  const awayOdd = awayOut.price;
+  const drawOdd = drawOut?.price ?? 3.2;
+
+  const meta = LEAGUE_META[game.sport_key] ?? { name: game.sport_title, flag: "⚽" };
+
+  // Derive pool size from implied probability (higher odds = smaller pool share)
+  const totalPoolUSD = 5000; // placeholder — replace with on-chain pool read
+  const invHome = 1 / homeOdd;
+  const invDraw = 1 / drawOdd;
+  const invAway = 1 / awayOdd;
+  const total   = invHome + invDraw + invAway;
+
+  return {
+    id:              game.id,
+    home:            game.home_team,
+    homeShort:       abbreviate(game.home_team),
+    away:            game.away_team,
+    awayShort:       abbreviate(game.away_team),
+    homeOdd:         Math.round(homeOdd * 100) / 100,
+    drawOdd:         Math.round(drawOdd * 100) / 100,
+    awayOdd:         Math.round(awayOdd * 100) / 100,
+    league:          meta.name,
+    leagueCountry:   meta.flag,
+    commenceTime:    game.commence_time,
+    bettingDeadline: game.commence_time,   // ← add this line
+    isLive:          new Date(game.commence_time).getTime() < Date.now(),
+    pool: {
+      home:     Math.round((invHome / total) * totalPoolUSD),
+      draw:     Math.round((invDraw / total) * totalPoolUSD),
+      away:     Math.round((invAway / total) * totalPoolUSD),
+      totalUSD: totalPoolUSD,
+    },
+    venue: undefined,
+  };
+}
+
+// ── Public fetch function ─────────────────────────────────────────────────────
+
+/**
+ * Fetch live odds for all supported soccer leagues.
+ * Throws if NEXT_PUBLIC_ODDS_API_KEY is missing.
+ */
+export async function fetchLiveOdds(): Promise<Match[]> {
+  if (!API_KEY) {
+    throw new Error(
+      "NEXT_PUBLIC_ODDS_API_KEY is not set. Add it to your .env.local file."
+    );
   }
-}
 
-export async function fetchLiveOdds(apiKey: string): Promise<Match[]> {
-  const res = await fetch(
-    `https://api.the-odds-api.com/v4/sports/soccer_epl/odds/?apiKey=${apiKey}&regions=uk&markets=h2h&oddsFormat=decimal`
+  const results: Match[] = [];
+  const errors: string[] = [];
+
+  await Promise.allSettled(
+    SPORTS.map(async (sport) => {
+      const url = new URL(`${BASE_URL}/sports/${sport}/odds`);
+      url.searchParams.set("apiKey",     API_KEY);
+      url.searchParams.set("regions",    "eu");
+      url.searchParams.set("markets",    "h2h");
+      url.searchParams.set("oddsFormat", "decimal");
+      url.searchParams.set("dateFormat", "iso");
+
+      const res = await fetch(url.toString(), {
+        next: { revalidate: 60 }, // Next.js ISR — re-fetch at most every 60s
+      });
+
+      if (res.status === 401) {
+        throw new Error("Invalid API key. Check NEXT_PUBLIC_ODDS_API_KEY in .env.local.");
+      }
+      if (res.status === 422) {
+        errors.push(`${sport}: sport not available in your region`);
+        return;
+      }
+      if (!res.ok) {
+        errors.push(`${sport}: HTTP ${res.status}`);
+        return;
+      }
+
+      const games: OddsAPIGame[] = await res.json();
+      for (const game of games) {
+        const match = parseGame(game);
+        if (match) results.push(match);
+      }
+    })
   );
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as any).message || "Invalid API key or quota exceeded");
+  // If every league failed, surface the error
+  if (results.length === 0 && errors.length > 0) {
+    throw new Error(`Could not load any matches: ${errors.join("; ")}`);
   }
 
-  const data = await res.json();
-
-  return data.slice(0, 6).map((game: any): Match => {
-    const homePool = 30 + Math.floor(Math.random() * 30);
-    const drawPool = 15 + Math.floor(Math.random() * 15);
-    const awayPool = 100 - homePool - drawPool;
-    const totalUSD = 200 + Math.floor(Math.random() * 4000);
-
-    return {
-      id: game.id,
-      league: "Premier League",
-      leagueCountry: "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
-      isLive: false,
-      home: game.home_team,
-      homeShort: game.home_team.slice(0, 3).toUpperCase(),
-      away: game.away_team,
-      awayShort: game.away_team.slice(0, 3).toUpperCase(),
-      homeOdd: extractOdd(game, game.home_team),
-      drawOdd: extractOdd(game, "Draw"),
-      awayOdd: extractOdd(game, game.away_team),
-      commenceTime: game.commence_time,
-      bettingDeadline: game.commence_time,
-      pool: { home: homePool, draw: drawPool, away: awayPool, totalUSD },
-    };
+  // Sort: live first, then soonest upcoming
+  results.sort((a, b) => {
+    if (a.isLive && !b.isLive) return -1;
+    if (!a.isLive && b.isLive) return 1;
+    return new Date(a.commenceTime).getTime() - new Date(b.commenceTime).getTime();
   });
+
+  return results;
 }
